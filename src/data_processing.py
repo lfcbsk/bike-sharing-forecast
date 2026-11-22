@@ -27,9 +27,8 @@ def load_and_engineer_features(cfg: Config) -> Tuple[pd.DataFrame, List[str]]:
     sort_cols = ["dteday", "hr"] if "hr" in df.columns else ["dteday"]
     df = df.sort_values(sort_cols).reset_index(drop=True)
 
-    # Defensive imputation if any missing values exist
-    if df.isna().sum().sum() > 0:
-        df = df.ffill().bfill()
+    # Note: Missing value imputation is intentionally NOT performed here before splitting
+    # to avoid look-ahead bias (from bfill) and cross-split data leakage.
 
     # Cyclical encoding for periodic temporal variables
     if "hr" in df.columns:
@@ -108,26 +107,47 @@ def create_sliding_windows(
     return X, y_init, Y
 
 
+def impute_split_causally(
+    split_df: pd.DataFrame, train_fallback_means: pd.Series
+) -> np.ndarray:
+    """
+    Strictly causal missing-value imputation performed AFTER splitting:
+    1. Forward-fill (ffill) using only past observations within the split.
+    2. If leading rows at the very start of the split are still NaN, fill them using
+       the feature means computed strictly on the Training set (never using bfill from the future).
+    """
+    if split_df.isna().sum().sum() > 0:
+        split_df = split_df.ffill().fillna(train_fallback_means)
+    return split_df.values.astype(np.float32)
+
+
 def prepare_data(cfg: Config) -> Dict:
     """
     Execute the complete data preparation pipeline:
     1. Load CSV & engineer cyclical features
     2. Split chronologically into Train / Validation / Test sets
-    3. Fit StandardScaler strictly on Train and transform Train / Val / Test
-    4. Generate Seq2Seq sliding windows for each split
+    3. Perform strictly causal imputation per split (ffill + train-mean fallback, no bfill leakage)
+    4. Fit StandardScaler strictly on Train and transform Train / Val / Test
+    5. Generate Seq2Seq sliding windows for each split
     """
     df, feature_cols = load_and_engineer_features(cfg)
-    values = df.values  # Shape: (T, num_features), last column is pred_column
 
-    n_total = len(values)
+    n_total = len(df)
     n_train = int(n_total * cfg.train_ratio)
     n_val = int(n_total * (cfg.train_ratio + cfg.val_ratio))
 
-    train_raw = values[:n_train]
+    train_df = df.iloc[:n_train].copy()
     # Include `input_len` preceding context steps for Val and Test so the first target window
     # starts right at the split boundary without leaking any target labels across splits.
-    val_raw = values[n_train - cfg.input_len : n_val]
-    test_raw = values[n_val - cfg.input_len :]
+    val_df = df.iloc[n_train - cfg.input_len : n_val].copy()
+    test_df = df.iloc[n_val - cfg.input_len :].copy()
+
+    # Compute fallback means strictly on the training split (ignoring any NaNs)
+    train_means = train_df.mean()
+
+    train_raw = impute_split_causally(train_df, train_means)
+    val_raw = impute_split_causally(val_df, train_means)
+    test_raw = impute_split_causally(test_df, train_means)
 
     # Standardize all input features (fit on training data only)
     feature_scaler = StandardScaler()

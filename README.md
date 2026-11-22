@@ -63,11 +63,12 @@ bike-sharing-forecast/
 ```mermaid
 flowchart TD
     subgraph Step1["Step 1: Data Processing (src/data_processing.py)"]
-        A["Raw CSV Data<br/>(data/hour.csv - 17,379 rows)"] --> B["Chronological Sorting<br/>(dteday, hr) & Missing Value Check"]
+        A["Raw CSV Data<br/>(data/hour.csv - 17,379 rows)"] --> B["Chronological Sorting<br/>(dteday, hr)"]
         B --> C["Cyclical Feature Engineering<br/>sin/cos of hr (24), mnth (12), weekday (7)"]
         C --> D["Leakage Prevention<br/>Drop instant, dteday, casual, registered"]
         D --> E["Chronological Split<br/>Train (70%) | Val (15%) | Test (15%)"]
-        E --> F["StandardScaler Normalization<br/>(Fit ONLY on Train Set)"]
+        E --> E2["Strictly Causal Imputation per Split<br/>(ffill + Train Mean fallback, NO bfill)"]
+        E2 --> F["StandardScaler Normalization<br/>(Fit ONLY on Train Set)"]
         F --> G["Sliding Window Construction<br/>X: (N, 24, 19), y_init: (N, 1), Y: (N, 5)"]
     end
 
