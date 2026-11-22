@@ -85,6 +85,12 @@ def parse_args() -> argparse.Namespace:
         default=1e-3,
         help="Initial learning rate (default: 0.001)",
     )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default="outputs",
+        help="Output directory for checkpoints, metrics, and figures (default: outputs)",
+    )
     return parser.parse_args()
 
 
@@ -92,6 +98,7 @@ def main() -> None:
     args = parse_args()
     cfg = Config(
         data_path=Path(args.data_path),
+        output_dir=Path(args.output_dir),
         pred_column=args.pred_column,
         input_len=args.input_len,
         pred_len=args.pred_len,
