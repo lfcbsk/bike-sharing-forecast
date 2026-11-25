@@ -1,7 +1,6 @@
 """
 Step 1: Data Processing (src/data_processing.py)
 - Load raw CSV dataset (hour.csv or day.csv)
-- Sort chronologically and impute any missing values
 - Engineer cyclical time features (sin/cos transforms for hour, month, weekday)
 - Perform strict chronological Train / Validation / Test split
 - Standardize features using StandardScaler fitted ONLY on the Training split (preventing data leakage)
@@ -16,7 +15,7 @@ from sklearn.preprocessing import StandardScaler
 from src.config import Config
 
 
-def load_and_engineer_features(cfg: Config) -> Tuple[pd.DataFrame, List[str]]:
+def load_and_engineer_features(cfg: Config) -> Tuple[pd.DataFrame, List[str], pd.Series]:
     """
     Load the raw CSV file, create cyclical (sin/cos) temporal features, drop leakage columns,
     and place `pred_column` as the final column in the returned DataFrame.
@@ -26,9 +25,9 @@ def load_and_engineer_features(cfg: Config) -> Tuple[pd.DataFrame, List[str]]:
     # Ensure strict chronological ordering
     sort_cols = ["dteday", "hr"] if "hr" in df.columns else ["dteday"]
     df = df.sort_values(sort_cols).reset_index(drop=True)
-
-    # Note: Missing value imputation is intentionally NOT performed here before splitting
-    # to avoid look-ahead bias (from bfill) and cross-split data leakage.
+    timestamps = pd.to_datetime(df["dteday"])
+    if "hr" in df.columns:
+        timestamps = timestamps + pd.to_timedelta(df["hr"], unit="h")
 
     # Cyclical encoding for periodic temporal variables
     if "hr" in df.columns:
@@ -60,7 +59,7 @@ def load_and_engineer_features(cfg: Config) -> Tuple[pd.DataFrame, List[str]]:
     feature_cols = other_cols + [cfg.pred_column]
     df_clean = df_clean[feature_cols].astype(np.float32)
 
-    return df_clean, feature_cols
+    return df_clean, feature_cols, timestamps
 
 
 def create_sliding_windows(
@@ -68,6 +67,8 @@ def create_sliding_windows(
     targets: np.ndarray,
     input_len: int,
     pred_len: int,
+    timestamps: pd.Series = None,
+    step: pd.Timedelta = None,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Create Sequence-to-Sequence sliding windows (X, y_init, Y):
@@ -96,29 +97,20 @@ def create_sliding_windows(
     for i in range(num_samples):
         enc_end = i + input_len
         dec_end = enc_end + pred_len
-
+        if timestamps is not None:
+            window_times = timestamps.iloc[i:dec_end]
+            if not window_times.diff().iloc[1:].eq(step).all():
+                continue
         X_list.append(features[i:enc_end])
         y_init_list.append(targets[enc_end - 1 : enc_end])
         Y_list.append(targets[enc_end:dec_end])
 
+    if not X_list:
+        raise ValueError("No complete, consecutive time windows remain in this split.")
     X = np.array(X_list, dtype=np.float32)
     y_init = np.array(y_init_list, dtype=np.float32)
     Y = np.array(Y_list, dtype=np.float32)
     return X, y_init, Y
-
-
-def impute_split_causally(
-    split_df: pd.DataFrame, train_fallback_means: pd.Series
-) -> np.ndarray:
-    """
-    Strictly causal missing-value imputation performed AFTER splitting:
-    1. Forward-fill (ffill) using only past observations within the split.
-    2. If leading rows at the very start of the split are still NaN, fill them using
-       the feature means computed strictly on the Training set (never using bfill from the future).
-    """
-    if split_df.isna().sum().sum() > 0:
-        split_df = split_df.ffill().fillna(train_fallback_means)
-    return split_df.values.astype(np.float32)
 
 
 def prepare_data(cfg: Config) -> Dict:
@@ -126,11 +118,11 @@ def prepare_data(cfg: Config) -> Dict:
     Execute the complete data preparation pipeline:
     1. Load CSV & engineer cyclical features
     2. Split chronologically into Train / Validation / Test sets
-    3. Perform strictly causal imputation per split (ffill + train-mean fallback, no bfill leakage)
-    4. Fit StandardScaler strictly on Train and transform Train / Val / Test
-    5. Generate Seq2Seq sliding windows for each split
+    3. Fit StandardScaler strictly on Train and transform Train / Val / Test
+    4. Generate complete, consecutive Seq2Seq windows for each split
     """
-    df, feature_cols = load_and_engineer_features(cfg)
+    df, feature_cols, timestamps = load_and_engineer_features(cfg)
+    step = pd.Timedelta(hours=1) if "hr" in feature_cols else pd.Timedelta(days=1)
 
     n_total = len(df)
     n_train = int(n_total * cfg.train_ratio)
@@ -141,13 +133,9 @@ def prepare_data(cfg: Config) -> Dict:
     # starts right at the split boundary without leaking any target labels across splits.
     val_df = df.iloc[n_train - cfg.input_len : n_val].copy()
     test_df = df.iloc[n_val - cfg.input_len :].copy()
-
-    # Compute fallback means strictly on the training split (ignoring any NaNs)
-    train_means = train_df.mean()
-
-    train_raw = impute_split_causally(train_df, train_means)
-    val_raw = impute_split_causally(val_df, train_means)
-    test_raw = impute_split_causally(test_df, train_means)
+    train_raw = train_df.to_numpy(dtype=np.float32)
+    val_raw = val_df.to_numpy(dtype=np.float32)
+    test_raw = test_df.to_numpy(dtype=np.float32)
 
     # Standardize all input features (fit on training data only)
     feature_scaler = StandardScaler()
@@ -166,13 +154,16 @@ def prepare_data(cfg: Config) -> Dict:
     test_target_scaled = target_scaler.transform(test_raw[:, -1:]).squeeze(-1)
 
     X_train, y_init_train, Y_train = create_sliding_windows(
-        train_scaled, train_target_scaled, cfg.input_len, cfg.pred_len
+        train_scaled, train_target_scaled, cfg.input_len, cfg.pred_len,
+        timestamps.iloc[:n_train].reset_index(drop=True), step,
     )
     X_val, y_init_val, Y_val = create_sliding_windows(
-        val_scaled, val_target_scaled, cfg.input_len, cfg.pred_len
+        val_scaled, val_target_scaled, cfg.input_len, cfg.pred_len,
+        timestamps.iloc[n_train - cfg.input_len:n_val].reset_index(drop=True), step,
     )
     X_test, y_init_test, Y_test = create_sliding_windows(
-        test_scaled, test_target_scaled, cfg.input_len, cfg.pred_len
+        test_scaled, test_target_scaled, cfg.input_len, cfg.pred_len,
+        timestamps.iloc[n_val - cfg.input_len:].reset_index(drop=True), step,
     )
 
     return {

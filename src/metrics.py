@@ -43,7 +43,9 @@ def calc_nse(y_true: np.ndarray, y_pred: np.ndarray) -> float:
     ss_res = np.sum((y_true - y_pred) ** 2)
     ss_tot = np.sum((y_true - np.mean(y_true)) ** 2)
     if ss_tot == 0:
-        return 0.0
+        # Finite convention used by sklearn: perfect constant prediction is 1,
+        # while any error against a constant target is 0.
+        return 1.0 if ss_res == 0 else 0.0
     return float(1.0 - (ss_res / ss_tot))
 
 

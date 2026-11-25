@@ -6,6 +6,7 @@ Step 5: Training & Validation Pipeline for Seq2Seq + Attention (src/train.py)
 """
 
 from typing import Dict, List, Tuple
+import random
 import numpy as np
 import torch
 import torch.nn as nn
@@ -17,6 +18,7 @@ from src.model import Seq2SeqAttentionForecaster
 
 def set_seed(seed: int) -> None:
     """Fix random seeds for reproducibility."""
+    random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     if torch.cuda.is_available():
@@ -105,6 +107,8 @@ def train_model(
     """
     Full training loop with learning rate scheduling, early stopping, and best checkpoint restoration.
     """
+    if cfg.epochs < 1:
+        raise ValueError("epochs must be at least 1")
     cfg.ensure_dirs()
     device = torch.device(cfg.device)
     model = model.to(device)
@@ -118,6 +122,7 @@ def train_model(
     )
 
     best_val_loss = float("inf")
+    best_saved = False
     patience_counter = 0
     best_ckpt_path = cfg.output_dir / "checkpoints" / "best_seq2seq_attention.pt"
 
@@ -161,6 +166,7 @@ def train_model(
             best_val_loss = val_loss
             patience_counter = 0
             torch.save(model.state_dict(), best_ckpt_path)
+            best_saved = True
             improved = " * [Best saved]"
         else:
             patience_counter += 1
@@ -178,6 +184,8 @@ def train_model(
             break
 
     print("-" * 72)
+    if not best_saved:
+        raise RuntimeError("No finite validation improvement; no checkpoint was saved in this run")
     print(f"[Train] Finished! Restoring best weights (Val MSE = {best_val_loss:.4f}) from: {best_ckpt_path}")
     model.load_state_dict(torch.load(best_ckpt_path, map_location=device, weights_only=True))
     return model, history

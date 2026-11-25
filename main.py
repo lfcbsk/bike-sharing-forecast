@@ -12,6 +12,7 @@ from pathlib import Path
 import torch
 
 from src.config import Config
+from src.artifacts import save_checkpoint_metadata
 from src.data_processing import prepare_data
 from src.dataset import build_dataloaders
 from src.evaluate import predict_dataset, print_and_save_metrics, save_plots
@@ -147,6 +148,8 @@ def main() -> None:
     print("STEP 4: TRAINING & VALIDATION")
     print("=" * 72)
     model, history = train_model(model, train_loader, val_loader, cfg)
+    metadata_path = save_checkpoint_metadata(cfg, data_dict)
+    print(f"- Checkpoint metadata: {metadata_path}")
 
     print("\n" + "=" * 72)
     print("STEP 5: TEST SET EVALUATION (R², NSE, MAE, RMSE) & VISUALIZATION")
