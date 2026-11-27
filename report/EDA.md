@@ -36,12 +36,13 @@ The saved metrics use one chronological holdout. It protects the final test peri
 
 ## Simple test baselines
 
-Both baselines use the same 2,469 complete test forecast origins and five forecast hours as the model. Persistence repeats the last observed count; seasonal persistence uses the count 24 hours before each forecast hour.
+Persistence and daily seasonal naive use the same 2,469 complete test origins as the model. Weekly seasonal naive uses the count at the same clock hour 168 hours earlier. It is defined for 2,414 origins; 55 origins have at least one missing prior-week hour and are excluded from its score.
 
 | Method | MAE | RMSE | Pooled R² |
 |---|---:|---:|---:|
 | Last observation | 166.89 | 234.95 | -0.1850 |
 | Same hour previous day | 79.99 | 132.60 | 0.6226 |
+| Same hour previous week (subset) | 64.21 | 108.01 | 0.7505 |
 
 The saved model results in `outputs/metrics/test_metrics.json` report MAE 42.73, RMSE 65.87, and pooled R² 0.9069. These baselines provide context; they do not isolate the effect of attention.
 

@@ -23,7 +23,7 @@ from src.train import set_seed, train_model
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Seq2Seq + Attention Bike Sharing Forecasting (Next 5 Consecutive Time Steps)"
+        description="Seq2Seq Bike Sharing Forecasting (Next 5 Consecutive Time Steps)"
     )
     parser.add_argument(
         "--data-path",
@@ -65,8 +65,8 @@ def parse_args() -> argparse.Namespace:
         "--attention",
         type=str,
         default="bahdanau",
-        choices=["bahdanau", "luong"],
-        help="Attention mechanism type: 'bahdanau' or 'luong' (default: bahdanau)",
+        choices=["bahdanau", "luong", "none"],
+        help="Attention mechanism type: bahdanau, luong, or none (default: bahdanau)",
     )
     parser.add_argument(
         "--epochs",
@@ -92,6 +92,7 @@ def parse_args() -> argparse.Namespace:
         default="outputs",
         help="Output directory for checkpoints, metrics, and figures (default: outputs)",
     )
+    parser.add_argument("--seed", type=int, default=42, help="Random seed (default: 42)")
     return parser.parse_args()
 
 
@@ -109,6 +110,7 @@ def main() -> None:
         epochs=args.epochs,
         batch_size=args.batch_size,
         learning_rate=args.lr,
+        seed=args.seed,
     )
     set_seed(cfg.seed)
 
@@ -141,7 +143,7 @@ def main() -> None:
         attention_type=cfg.attention_type,
     )
     num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f"- Attention mechanism : {cfg.attention_type.capitalize()} Attention")
+    print(f"- Attention mechanism : {cfg.attention_type}")
     print(f"- Trainable parameters: {num_params:,}")
 
     print("\n" + "=" * 72)

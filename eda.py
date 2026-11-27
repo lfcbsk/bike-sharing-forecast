@@ -25,6 +25,8 @@ def main() -> None:
 
     # Use exactly the complete test windows used by the forecasting pipeline.
     actual, persistence, seasonal = [], [], []
+    weekly_actual, weekly_pred = [], []
+    by_timestamp = pd.Series(data["cnt"].to_numpy(), index=time)
     for start in range(val_end - 24, n - 28):
         window_time = time.iloc[start : start + 29]
         if not window_time.diff().iloc[1:].eq(pd.Timedelta(hours=1)).all():
@@ -33,9 +35,15 @@ def main() -> None:
         actual.append(counts[24:29])
         persistence.append(np.repeat(counts[23], 5))
         seasonal.append(counts[0:5])  # Each target hour shifted back exactly 24 hours.
+        prior_week = window_time.iloc[24:29] - pd.Timedelta(hours=168)
+        if prior_week.isin(by_timestamp.index).all():
+            weekly_actual.append(counts[24:29])
+            weekly_pred.append(by_timestamp.loc[prior_week].to_numpy())
     actual = np.asarray(actual)
     persistence = np.asarray(persistence)
     seasonal = np.asarray(seasonal)
+    weekly_actual = np.asarray(weekly_actual)
+    weekly_pred = np.asarray(weekly_pred)
 
     def scores(prediction: np.ndarray) -> tuple[float, float, float]:
         error = actual - prediction
@@ -102,7 +110,7 @@ def main() -> None:
         "",
         "## Simple test baselines",
         "",
-        f"Both baselines use the same {len(actual):,} complete test forecast origins and five forecast hours as the model. Persistence repeats the last observed count; seasonal persistence uses the count 24 hours before each forecast hour.",
+        f"Persistence and daily seasonal naive use the same {len(actual):,} complete test origins as the model. Weekly seasonal naive uses the count at the same clock hour 168 hours earlier. It is defined for {len(weekly_actual):,} origins; {len(actual)-len(weekly_actual)} origins have at least one missing prior-week hour and are excluded from its score.",
         "",
         "| Method | MAE | RMSE | Pooled R² |",
         "|---|---:|---:|---:|",
@@ -110,6 +118,12 @@ def main() -> None:
     for name, prediction in (("Last observation", persistence), ("Same hour previous day", seasonal)):
         mae, rmse, r2 = scores(prediction)
         lines.append(f"| {name} | {mae:.2f} | {rmse:.2f} | {r2:.4f} |")
+    weekly_error = weekly_actual - weekly_pred
+    lines.append(
+        f"| Same hour previous week (subset) | {np.mean(np.abs(weekly_error)):.2f} | "
+        f"{np.sqrt(np.mean(weekly_error**2)):.2f} | "
+        f"{1 - np.sum(weekly_error**2) / np.sum((weekly_actual - weekly_actual.mean())**2):.4f} |"
+    )
     lines += [
         "",
         "The saved model results in `outputs/metrics/test_metrics.json` report MAE 42.73, RMSE 65.87, and pooled R² 0.9069. These baselines provide context; they do not isolate the effect of attention.",

@@ -1,6 +1,6 @@
 # Bike sharing demand forecast
 
-This project predicts total bike rentals (`cnt`) for the next five hours from the preceding 24 hours in the UCI Bike Sharing hourly dataset. It uses an LSTM encoder, Bahdanau attention, and an autoregressive LSTM decoder. The code also supports Luong attention and the daily CSV.
+This project predicts total bike rentals (`cnt`) for the next five hours from the preceding 24 hours in the UCI Bike Sharing hourly dataset. It uses an LSTM encoder, Bahdanau attention, and an autoregressive LSTM decoder. An optional general multiplicative score is available under `--attention luong`; its query uses the preceding decoder state, so this is not a canonical Luong decoder. The code can also read the daily CSV.
 
 ## Results
 
@@ -17,6 +17,24 @@ The hourly data has 17,379 records. We split it chronologically into 70% trainin
 
 Standard R² and NSE use the same formula here, so their values are identical. The full table, including squared Pearson correlation and macro averages, is in `outputs/metrics/test_metrics.csv`. These are results from one chronological split and one model seed.
 
+An attention ablation retrained each variant with seeds 42, 43, and 44 on the same 24-hour input and test split. Values are mean ± sample standard deviation across seeds, computed from [saved runs](outputs/ablation/summary.csv):
+
+| Decoder context | Pooled MAE | Pooled RMSE | Pooled R² |
+|---|---:|---:|---:|
+| Zero context (`none`) | 45.52 ± 2.68 | 70.60 ± 2.91 | 0.8929 ± 0.0087 |
+| Bahdanau | 43.99 ± 1.53 | 67.56 ± 1.82 | 0.9020 ± 0.0053 |
+| General score (`luong`) | **41.74 ± 0.52** | **65.22 ± 0.31** | **0.9087 ± 0.0009** |
+
+The general-score variant has the lowest mean MAE and the lowest mean best-validation MSE (0.1841, versus 0.1885 for Bahdanau and 0.2165 for zero context). Its test advantage is a trend across only three seeds, not a significance claim; Bahdanau is not clearly separated from zero context. The zero-context baseline also removes the learned context path, so this comparison does not isolate the effect of nonuniform weights. The ablation is exploratory because all variants have already been evaluated on the held-out test period. A future final configuration must be selected on validation data before inspecting a fresh test set.
+
+| Seed | Zero context MAE | Bahdanau MAE | General score MAE |
+|---:|---:|---:|---:|
+| 42 | 42.73 | 42.73 | 41.98 |
+| 43 | 48.06 | 43.54 | 42.09 |
+| 44 | 45.77 | 45.69 | 41.13 |
+
+Re-running Bahdanau with seed 42 gave MAE 42.7295, compared with 42.7329 in the previously saved checkpoint (difference 0.0034). The runs are close but not bitwise identical; the earlier environment and deterministic-algorithm settings were not recorded in enough detail to assign a single cause.
+
 ## Data and model
 
 The input contains historical `cnt`, calendar fields, observed weather fields, and sine/cosine encodings of hour, month, and weekday. The baseline drops historical `casual` and `registered` as redundant components of `cnt`; their past values would not inherently cause leakage. The date and row identifier are also excluded from model inputs. Scalers are fitted on training rows only. Validation and test windows may use preceding rows as historical context, but their target labels stay in their own splits. Windows crossing an unrecorded hour are excluded.
@@ -24,6 +42,10 @@ The input contains historical `cnt`, calendar fields, observed weather fields, a
 The encoder has two LSTM layers with 64 hidden units. Attention weights the 24 encoder states at each decoder step. The decoder begins with the last observed `cnt`; during validation and testing it feeds its own predictions into later steps. Training uses five-step MSE, AdamW, teacher forcing, gradient clipping, a learning-rate scheduler, and early stopping based on autoregressive validation loss.
 
 The [EDA notebook](notebooks/EDA.ipynb) quantifies gaps, window loss, temporal dependence, feature associations, and split shift. The [compact EDA summary](report/EDA.md) can be regenerated with `python eda.py`. The [assignment report](report/Task%202%20Multi%20Step%20Bike%20Sharing%20Forecasting%20Report.md) gives more detail on the method and limitations.
+
+The same-hour previous-week baseline scores MAE 64.21 on 2,414 test windows with an observed hour exactly 168 hours earlier. The saved Bahdanau checkpoint scores MAE 43.17 on that same subset. The remaining 55 test windows lack at least one prior-week hour. Average attention weights from the original Bahdanau checkpoint are near uniform; this does not imply the context has no predictive value.
+
+To compare attention mechanisms with the same pipeline, run `.\bike-forecast\Scripts\python.exe scripts/run_ablation.py`. It trains `bahdanau`, `luong`, and `none` with seeds 42, 43, and 44 in separate `outputs/ablation/` directories, then writes `runs.csv` and `summary.csv`. Use `--resume` to continue after an interrupted run. The `none` variant supplies zero context to the unchanged decoder and returns uniform placeholder weights for the plotting interface.
 
 ## Project layout
 
@@ -73,6 +95,6 @@ For example, to try the daily file or a different attention mechanism:
 
 ## Limits
 
-The test period is later than training and has a different average rental count. The reported scores do not show how the model would perform on a new city or year. The simple baselines in the EDA provide context, but no ablation was run to measure the contribution of attention alone. Overlapping forecast windows also mean individual errors are not independent observations for significance tests. Rolling-origin validation across multiple cutoffs has not yet been run.
+The test period is later than training and has a different average rental count. The reported scores do not show how the model would perform on a new city or year. The ablation uses three seeds and one 24-hour input length; a larger seed set and 168-hour input comparison have not been run. The decoder also does not receive known calendar features for the forecast hours. Overlapping forecast windows mean individual errors are not independent observations for significance tests. Rolling-origin validation across multiple cutoffs has not yet been run. The older `outputs/day/` run has poor saved accuracy (R² 0.1668, MAE 1,497.48 rentals/day) and no checkpoint metadata, so it is not treated as a reproducible result of the current pipeline.
 
 Data source: [UCI Bike Sharing dataset](https://archive.ics.uci.edu/dataset/275/bike+sharing+dataset). The original data description is in `data/Readme.txt`.

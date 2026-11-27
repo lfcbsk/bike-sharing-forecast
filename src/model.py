@@ -93,8 +93,10 @@ class BahdanauAttention(nn.Module):
 
 class LuongAttention(nn.Module):
     """
-    Luong (General / Multiplicative) Attention mechanism:
-        score(s_t, h_i) = s_t^T * W_a * h_i
+    General multiplicative attention score with a pre-decoder-step query.
+
+    The score has Luong's general form, but this decoder queries with the
+    preceding hidden state, so the overall computation is not canonical Luong.
     """
 
     def __init__(self, hidden_size: int) -> None:
@@ -133,10 +135,14 @@ class AttentionDecoder(nn.Module):
         self.hidden_size = hidden_size
         self.num_layers = num_layers
 
-        if attention_type.lower() == "luong":
+        if attention_type.lower() == "none":
+            self.attention = None
+        elif attention_type.lower() == "luong":
             self.attention = LuongAttention(hidden_size)
-        else:
+        elif attention_type.lower() == "bahdanau":
             self.attention = BahdanauAttention(hidden_size)
+        else:
+            raise ValueError(f"Unknown attention type: {attention_type}")
 
         # Decoder LSTM input consists of previous scalar prediction (1) + context vector (hidden_size)
         self.lstm = nn.LSTM(
@@ -171,9 +177,16 @@ class AttentionDecoder(nn.Module):
             attn_weights: (batch_size, input_len) - Attention weights over Encoder steps
         """
         hidden, cell = hidden_cell
-        # Use top-layer Decoder hidden state as the Attention query
+        # Both score types use the pre-step top-layer hidden state as query.
         top_hidden = hidden[-1]  # (batch_size, hidden_size)
-        context, attn_weights = self.attention(top_hidden, encoder_outputs)
+        if self.attention is None:
+            context = encoder_outputs.new_zeros(encoder_outputs.size(0), self.hidden_size)
+            attn_weights = encoder_outputs.new_full(
+                (encoder_outputs.size(0), encoder_outputs.size(1)),
+                1.0 / encoder_outputs.size(1),
+            )
+        else:
+            context, attn_weights = self.attention(top_hidden, encoder_outputs)
 
         # Concatenate y_prev and context as LSTM input: (batch_size, 1, 1 + hidden_size)
         lstm_input = torch.cat([y_prev, context], dim=-1).unsqueeze(1)

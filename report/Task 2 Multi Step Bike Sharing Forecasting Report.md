@@ -125,7 +125,7 @@ Each horizon is scored across 2,469 test forecast origins. The macro result aver
 
 ### 2.5.3. Baseline Methods
 
-Two simple forecasts use exactly the same complete test windows as the model. **Persistence** repeats the last observed count for all five hours. **Daily seasonal naive** uses the count exactly 24 hours before each forecast hour. Neither baseline uses future information.
+Persistence and daily seasonal naive use exactly the same 2,469 complete test windows as the model. **Persistence** repeats the last observed count for all five hours. **Daily seasonal naive** uses the count exactly 24 hours before each forecast hour. **Weekly seasonal naive** uses the count at the same clock hour 168 hours earlier. It is defined for 2,414 of those windows; 55 have at least one missing prior-week hour. None of these baselines uses future information.
 
 ## 2.6. Experimental Results and Discussion
 
@@ -151,13 +151,39 @@ MAE rises from 34.10 at $t+1$ to 49.45 at $t+5$, while $R^2$ falls from 0.9408 t
 |---|---:|---:|
 | Persistence | 166.89 | 234.95 |
 | Daily seasonal naive | 79.99 | 132.60 |
+| Weekly seasonal naive (2,414-window subset) | 64.21 | 108.01 |
+| LSTM with attention (same 2,414-window subset) | 43.17 | 66.33 |
 | **LSTM encoder–decoder with attention** | **42.73** | **65.87** |
 
-The trained model has lower error than either simple baseline on this test period. This comparison evaluates the complete model, not attention by itself.
+The trained model has lower error than persistence and daily seasonal naive on the common 2,469-window test set. On the 2,414-window subset where a true 168-hour lag exists, the saved checkpoint also beats weekly naive (MAE 43.17 versus 64.21). Weekly naive is stronger than daily naive on its available windows. This comparison evaluates the complete model, not attention by itself.
+
+### Attention Ablation (24-Hour Input)
+
+We retrained Bahdanau, the implemented general-score variant, and a zero-context decoder with seeds 42, 43, and 44. Each run used the same chronological split and test windows. The zero-context decoder keeps the downstream LSTM and readout dimensions, supplies a zero vector in place of context, and returns uniform placeholder weights for the plotting interface. The table reports mean ± sample standard deviation across three independently trained runs; the complete per-run and per-horizon scores are in `outputs/ablation/runs.csv` and `outputs/ablation/summary.csv`.
+
+| Decoder context | Pooled MAE | Pooled RMSE | Pooled R² |
+|---|---:|---:|---:|
+| Zero context | 45.52 ± 2.68 | 70.60 ± 2.91 | 0.8929 ± 0.0087 |
+| Bahdanau | 43.99 ± 1.53 | 67.56 ± 1.82 | 0.9020 ± 0.0053 |
+| General score (`luong`) | **41.74 ± 0.52** | **65.22 ± 0.31** | **0.9087 ± 0.0009** |
+
+The general-score variant has the lowest mean test MAE and the lowest mean best-validation MSE: 0.1841, versus 0.1885 for Bahdanau and 0.2165 for zero context. These validation values come from training logs rounded to four decimals. Its test advantage is a trend across only three seeds, not a significance claim; Bahdanau is not clearly separated from zero context. The ablation also changes whether a learned context vector is present, so it does not isolate the value of nonuniform weights. The `luong` option uses a pre-step query, so it is not a canonical Luong decoder.
+
+| Seed | Zero context test MAE | Bahdanau test MAE | General-score test MAE |
+|---:|---:|---:|---:|
+| 42 | 42.73 | 42.73 | 41.98 |
+| 43 | 48.06 | 43.54 | 42.09 |
+| 44 | 45.77 | 45.69 | 41.13 |
+
+The Bahdanau seed-42 retraining gives MAE 42.7295, compared with 42.7329 from the earlier saved checkpoint, a difference of 0.0034. This is a close reproduction rather than a bitwise match; the original environment and deterministic-algorithm settings are not fully recorded, so the cause of the small difference cannot be isolated.
+
+All three variants have already been inspected on this test period, so these results are exploratory. A final configuration should be selected by validation loss before evaluating on a fresh held-out test period; the lowest test MAE must not be used to select it.
 
 ### 2.6.4. Forecast Visualization
 
 The forecast plot shows actual and predicted counts for the first and fifth forecast horizons over the first 168 valid test origins. Its horizontal axis indexes forecast origins, which need not be consecutive clock hours because gap-crossing windows were removed.
+
+Re-running the original Bahdanau checkpoint gives average attention weights from 0.04058 to 0.04410 per historical hour, close to uniform weighting ($1/24\approx0.04167$). This shows little concentration in the *average* weights. Individual examples may differ. The ablation above suggests a benefit from the learned context path, but does not establish that nonuniform weights are necessary.
 
 ![Actual and predicted counts at the first and fifth horizons](../outputs/figures/forecast_comparison.png)
 
@@ -165,11 +191,13 @@ The forecast plot shows actual and predicted counts for the first and fifth fore
 
 ### 2.6.5. Limitations and Discussion
 
-The experiment uses one dataset, one chronological test period, and one principal architecture. The train, validation, and test periods have different average demand, so the reported accuracy may not transfer unchanged to another year or city. There is no no-attention ablation, so the results cannot isolate the contribution of attention. The reported point metrics remain valid for this test period, but overlapping windows require care with confidence intervals or significance claims.
+The experiment uses one dataset and one chronological test period. The train, validation, and test periods have different average demand, so the reported accuracy may not transfer unchanged to another year or city. The attention ablation uses three seeds at the 24-hour input length; longer histories and a uniform mean-pooling control have not been compared. The exploratory comparison has already used the test labels, so a selected final model would need a new test period. The reported point metrics remain valid for this test period, but overlapping windows require care with confidence intervals or significance claims.
+
+The repository also contains an earlier exploratory daily-data run under `outputs/day/`. Its saved pooled $R^2$ is 0.1668 and MAE is 1,497.48 rentals/day. That run has no checkpoint metadata file and cannot be fully reconstructed from the saved artifacts, so it is not treated as a comparable result for the hourly task. The daily dataset has only 731 records, and its target scale differs substantially from hourly counts.
 
 ## 2.7. Conclusion
 
-The model produces five consecutive hourly forecasts from a 24-hour history. On 2,469 complete test forecast origins, it achieves pooled MAE 42.73, RMSE 65.87, and $R^2$ 0.9069, outperforming two simple baselines. Further work should repeat training with several seeds and compare a model without attention before attributing gains to that component.
+The original Bahdanau model produces five consecutive hourly forecasts from a 24-hour history. On 2,469 complete test forecast origins, its saved checkpoint achieves pooled MAE 42.73, RMSE 65.87, and $R^2$ 0.9069, outperforming persistence and daily seasonal naive. On the 2,414 origins with a valid same-hour prior-week observation, it also outperforms weekly seasonal naive. Across three retraining seeds, the general-score variant has the lowest mean MAE (41.74), followed by Bahdanau (43.99) and zero context (45.52); this is an exploratory trend, not a selected final model. A uniform mean-pooling control and longer input histories are needed to isolate the role of learned attention weights.
 
 ## References
 

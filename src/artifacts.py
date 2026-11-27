@@ -16,10 +16,15 @@ def save_checkpoint_metadata(cfg: Config, data_dict: Dict) -> Path:
     checkpoint_hash = hashlib.sha256(checkpoint_path.read_bytes()).hexdigest()
     feature_scaler = data_dict["feature_scaler"]
     target_scaler = data_dict["target_scaler"]
+    resolved_data = cfg.data_path.resolve()
+    try:
+        portable_data_path = resolved_data.relative_to(cfg.base_dir.resolve()).as_posix()
+    except ValueError:
+        portable_data_path = str(resolved_data)
     metadata = {
         "checkpoint": "best_seq2seq_attention.pt",
         "checkpoint_sha256": checkpoint_hash,
-        "data_path": str(cfg.data_path),
+        "data_path": portable_data_path,
         "data_sha256": data_hash,
         "pred_column": cfg.pred_column,
         "seed": cfg.seed,

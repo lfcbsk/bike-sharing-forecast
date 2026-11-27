@@ -1,7 +1,7 @@
 {
   "checkpoint": "best_seq2seq_attention.pt",
   "checkpoint_sha256": "a22971bedb64684a90e5dcdfb1f86a9ae52b80e76e4839d2f0b2db5c3ace78fc",
-  "data_path": "D:\\dseb\\7th_semester\\DL\\bike-sharing-forecast\\data\\hour.csv",
+  "data_path": "data/hour.csv",
   "data_sha256": "e03de4ee4ef4dc376ac6e04bf829673c6269e8eba5c60fa121640fa2f829504f",
   "pred_column": "cnt",
   "seed": 42,
