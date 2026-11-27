@@ -15,16 +15,18 @@ The hourly data has 17,379 records. We split it chronologically into 70% trainin
 | 5 | 0.8781 | 49.45 | 75.30 |
 | Overall, pooled | **0.9069** | **42.73** | **65.87** |
 
+This table describes the original single-seed Bahdanau checkpoint, which remains the main submitted model. The four-variant, three-seed ablation is reported below.
+
 Standard R² and NSE use the same formula here, so their values are identical. The full table, including squared Pearson correlation and macro averages, is in `outputs/metrics/test_metrics.csv`. These are results from one chronological split and one model seed.
 
 An attention ablation retrained each variant with seeds 42, 43, and 44 on the same 24-hour input and test split. Values are mean ± sample standard deviation across seeds, computed from [saved runs](outputs/ablation/summary.csv):
 
-| Decoder context | Pooled MAE | Pooled RMSE | Pooled R² |
-|---|---:|---:|---:|
-| Zero context (`none`) | 45.52 ± 2.68 | 70.60 ± 2.91 | 0.8929 ± 0.0087 |
-| Fixed mean context (`mean`) | 43.48 ± 1.67 | 67.85 ± 2.53 | 0.9011 ± 0.0074 |
-| Bahdanau | 43.99 ± 1.53 | 67.56 ± 1.82 | 0.9020 ± 0.0053 |
-| General score (`luong`) | **41.74 ± 0.52** | **65.22 ± 0.31** | **0.9087 ± 0.0009** |
+| Decoder context | Pooled MAE | Pooled RMSE | Pooled R² | Best validation MSE |
+|---|---:|---:|---:|---:|
+| Zero context (`none`) | 45.52 ± 2.68 | 70.60 ± 2.91 | 0.8929 ± 0.0087 | 0.2165 ± 0.0217 |
+| Fixed mean context (`mean`) | 43.48 ± 1.67 | 67.85 ± 2.53 | 0.9011 ± 0.0074 | 0.2100 ± 0.0275 |
+| Bahdanau | 43.99 ± 1.53 | 67.56 ± 1.82 | 0.9020 ± 0.0053 | 0.1885 ± 0.0113 |
+| General score (`luong`) | **41.74 ± 0.52** | **65.22 ± 0.31** | **0.9087 ± 0.0009** | **0.1841 ± 0.0090** |
 
 The general-score variant has the lowest mean MAE and the lowest mean best-validation MSE (0.1841, versus 0.1885 for Bahdanau, 0.2100 for fixed mean, and 0.2165 for zero context). Its test advantage is a trend across only three seeds, not a significance claim. Fixed mean improves mean test MAE relative to zero context, while Bahdanau does not clearly improve on fixed mean; this suggests that having context matters more than learning nonuniform Bahdanau weights for this 24-hour input. The ablation is exploratory because all variants have already been evaluated on the held-out test period. A future final configuration must be selected on validation data before inspecting a fresh test set.
 
@@ -33,6 +35,15 @@ The general-score variant has the lowest mean MAE and the lowest mean best-valid
 | 42 | 42.73 | 42.27 | 42.73 | 41.98 |
 | 43 | 48.06 | 45.38 | 43.54 | 42.09 |
 | 44 | 45.77 | 42.78 | 45.69 | 41.13 |
+
+| Decoder context | MAE at t+1 | MAE at t+5 |
+|---|---:|---:|
+| Zero context | 35.14 ± 3.63 | 52.70 ± 1.67 |
+| Fixed mean context | 33.73 ± 0.77 | 50.38 ± 3.18 |
+| Bahdanau | 34.38 ± 1.93 | 50.64 ± 1.08 |
+| General score | 33.31 ± 1.32 | 47.33 ± 0.36 |
+
+The mean MAE gap between general score and zero context grows from 1.82 at t+1 to 5.38 at t+5, consistent with a context path reducing autoregressive error accumulation. This pattern alone does not prove the mechanism. Validation and test rankings can disagree: at seed 42, zero context had worse best-validation MSE than Bahdanau seed 43 (0.2210 versus 0.1945), yet lower test MAE (42.73 versus 43.54). Across the 12 runs, best epochs were 4–10 while the 35-epoch teacher-forcing schedule was still at roughly 0.37–0.46.
 
 Re-running Bahdanau with seed 42 gave MAE 42.7295, compared with 42.7329 in the previously saved checkpoint (difference 0.0034). The runs are close but not bitwise identical; the earlier environment and deterministic-algorithm settings were not recorded in enough detail to assign a single cause.
 

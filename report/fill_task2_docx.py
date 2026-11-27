@@ -10,7 +10,7 @@ import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).parent
 SOURCE = ROOT / "Final Major Assignment Report 2026 Template.docx"
-DEST = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "Final Major Assignment Report 2026.docx"
+DEST = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "Final Major Assignment Report 2026 revised.docx"
 W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 WP = "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
@@ -148,7 +148,7 @@ add(nodes, "2.2. Dataset and Data Preprocessing", [
         "UCI Bike Sharing hour.csv contains 17,379 hourly records from 2011–2012. The target cnt is total rentals and equals casual + registered. Inputs contain historical demand, calendar variables, and observed weather; future weather is not used.",
     ]),
     ("2.2.2. Exploratory Data Analysis", [
-        "The CSV has no blank cells or duplicate timestamps. It has 75 gaps covering 165 unrecorded hours. In training data, mean demand peaks at 17:00 (390.9) and is lowest at 04:00 (5.2). Mean cnt differs across train, validation and test: 159.9, 281.0 and 235.7. These findings support a 24-hour history and chronological evaluation.",
+        "The CSV has no blank cells or duplicate timestamps. It has 75 gaps covering 165 unrecorded hours. In training data, mean demand peaks at 17:00 (390.9) and is lowest at 04:00 (5.2). Mean cnt differs across train, validation and test: 159.9, 281.0 and 235.7. These findings motivate calendar features and chronological evaluation; they do not establish 24 hours as the best history length.",
         image_paragraph(ROOT.parent / "outputs/figures/eda_overview.png", "rId100", 100),
         paragraph("Figure 2.2. Rental distribution, training-period patterns and split means.", "caption"),
     ]),
@@ -208,7 +208,7 @@ add(nodes, "2.5. Evaluation Methodology", [
         "Each of five horizons is scored across 2,469 test forecast origins. Macro metrics average the five horizon scores. Overall pooled metrics use all 12,345 horizon-specific predictions. Overlapping forecast windows are not independent observations for significance tests.",
     ]),
     ("2.5.3. Baseline Methods", [
-        "Persistence repeats the last observed count for all five hours. Daily seasonal naive uses the count exactly 24 hours before each forecast hour. Both use the same complete test windows as the proposed model.",
+        "Persistence repeats the last observed count for all five hours. Daily seasonal naive uses the count exactly 24 hours before each forecast hour. Both use all 2,469 complete test windows. Weekly seasonal naive uses the same clock hour 168 hours earlier and is defined for 2,414 windows; 55 windows lack at least one prior-week observation.",
     ]),
 ])
 add(nodes, "2.6. Experimental Results and Discussion", [
@@ -226,21 +226,46 @@ add(nodes, "2.6. Experimental Results and Discussion", [
     ]),
     ("2.6.3. Comparison with Baseline Methods", [
         table([["Method", "MAE", "RMSE"], ["Persistence", "166.89", "234.95"],
-               ["Daily seasonal naive", "79.99", "132.60"], ["Proposed model", "42.73", "65.87"]]),
-        "The full model has lower test error than either simple baseline. This comparison does not isolate the attention component.",
+               ["Daily seasonal naive", "79.99", "132.60"],
+               ["Weekly naive (2,414)", "64.21", "108.01"],
+               ["Bahdanau (same 2,414)", "43.17", "66.33"],
+               ["Original Bahdanau (2,469)", "42.73", "65.87"]]),
+        "The original Bahdanau checkpoint is the main submitted model. Its full-test MAE is 42.73; on the 2,414 origins where weekly naive is defined, its MAE is 43.17 versus 64.21 for weekly naive. This comparison does not isolate the attention component.",
     ]),
-    ("2.6.4. Forecast Visualization", [
+    ("2.6.4. Attention Ablation (24-Hour Input)", [
+        "An exploratory ablation trained zero context, fixed mean context, Bahdanau and a general-score variant with seeds 42, 43 and 44 on the same 24-hour history and test split. Values are mean ± sample standard deviation across seeds. Best-validation MSE was logged to four decimals. The general-score option uses a pre-step query, not a canonical Luong decoder.",
+        table([["Context", "MAE", "RMSE", "R²", "Best val MSE"],
+               ["Zero", "45.52 ± 2.68", "70.60 ± 2.91", "0.8929 ± 0.0087", "0.2165 ± 0.0217"],
+               ["Fixed mean", "43.48 ± 1.67", "67.85 ± 2.53", "0.9011 ± 0.0074", "0.2100 ± 0.0275"],
+               ["Bahdanau", "43.99 ± 1.53", "67.56 ± 1.82", "0.9020 ± 0.0053", "0.1885 ± 0.0113"],
+               ["General score", "41.74 ± 0.52", "65.22 ± 0.31", "0.9087 ± 0.0009", "0.1841 ± 0.0090"]]),
+        table([["Context", "MAE t+1", "MAE t+5"],
+               ["Zero", "35.14 ± 3.63", "52.70 ± 1.67"],
+               ["Fixed mean", "33.73 ± 0.77", "50.38 ± 3.18"],
+               ["Bahdanau", "34.38 ± 1.93", "50.64 ± 1.08"],
+               ["General score", "33.31 ± 1.32", "47.33 ± 0.36"]]),
+        table([["Seed", "Zero MAE", "Mean MAE", "Bahdanau MAE", "General MAE"],
+               ["42", "42.73", "42.27", "42.73", "41.98"],
+               ["43", "48.06", "45.38", "43.54", "42.09"],
+               ["44", "45.77", "42.78", "45.69", "41.13"]]),
+        "The mean MAE gap between general score and zero context grows from 1.82 at t+1 to 5.38 at t+5, consistent with context reducing autoregressive error accumulation, but not proof of that mechanism. Fixed mean improves on zero context, while Bahdanau is not clearly better than fixed mean. The general-score result is a three-seed trend, not a significance claim.",
+        "Validation and test rankings can disagree: zero context seed 42 has best-validation MSE 0.2210, worse than Bahdanau seed 43 (0.1945), but lower test MAE (42.73 versus 43.54). Selected checkpoints across all 12 runs occur at epochs 4–10, when the 35-epoch teacher-forcing schedule still used ratios about 0.37–0.46.",
+        "The original Bahdanau checkpoint's average attention weights range from 0.04058 to 0.04410, close to uniform 1/24 = 0.04167. In the seed-42 ablation, Bahdanau averages range from 0.04058 to 0.04411; general-score averages range from 0.02572 to 0.07361. Fixed mean performs similarly to Bahdanau in average test MAE, so this experiment does not show a clear gain from nonuniform Bahdanau weights.",
+        "All four variants have already been inspected on the test period. A future final configuration must be chosen by validation before evaluation on a fresh test period. The original Bahdanau checkpoint remains the main submitted model.",
+    ]),
+    ("2.6.5. Forecast Visualization", [
         "Actual and predicted counts at horizons t+1 and t+5 are shown for the first 168 valid test forecast origins. The x-axis indexes origins, which may skip clock hours after gap-crossing windows are removed.",
         image_paragraph(ROOT.parent / "outputs/figures/forecast_comparison.png", "rId101", 101),
         paragraph("Figure 2.5. Test forecasts at the first and fifth horizons.", "caption"),
     ]),
-    ("2.6.5. Limitations and Discussion", [
-        "The experiment uses one dataset, one chronological test period, and one principal architecture. Demand differs across periods, so accuracy may not transfer to another year or city. No no-attention ablation was run. Overlapping forecast windows also limit independence assumptions for confidence intervals.",
+    ("2.6.6. Limitations and Discussion", [
+        "The experiment uses one dataset and one chronological test period. Demand differs across periods, so accuracy may not transfer to another year or city. The context ablation uses only three seeds and a 24-hour input. The test set has already been inspected across variants, so selecting a final model now would require a fresh test period. Overlapping windows also limit independence assumptions for confidence intervals.",
+        "An earlier exploratory daily-data run under outputs/day/ has pooled R² 0.1668 and MAE 1,497.48 rentals/day. It has no checkpoint metadata and is not treated as a comparable result for the hourly task.",
     ]),
 ])
 add(nodes, "2.7. Conclusion", [
     ("Summary", [
-        "The model forecasts five consecutive hours from a 24-hour history. Across 2,469 valid test origins, pooled MAE is 42.73, RMSE is 65.87 and R² is 0.9069, below the errors of two simple baselines. Multiple seeds and a no-attention ablation would strengthen architecture comparisons.",
+        "The original Bahdanau model forecasts five hours from a 24-hour history. Across 2,469 valid test origins, pooled MAE is 42.73, RMSE is 65.87 and R² is 0.9069, below persistence and daily seasonal naive. On the 2,414 origins with a valid weekly lag, it also beats weekly naive. In the exploratory three-seed ablation, general score has the lowest mean MAE (41.74), followed by fixed mean (43.48), Bahdanau (43.99) and zero context (45.52). This does not select a new final model.",
     ]),
 ])
 

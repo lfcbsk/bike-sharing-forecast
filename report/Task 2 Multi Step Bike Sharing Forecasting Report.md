@@ -157,16 +157,16 @@ MAE rises from 34.10 at $t+1$ to 49.45 at $t+5$, while $R^2$ falls from 0.9408 t
 
 The trained model has lower error than persistence and daily seasonal naive on the common 2,469-window test set. On the 2,414-window subset where a true 168-hour lag exists, the saved checkpoint also beats weekly naive (MAE 43.17 versus 64.21). Weekly naive is stronger than daily naive on its available windows. This comparison evaluates the complete model, not attention by itself.
 
-### Attention Ablation (24-Hour Input)
+### 2.6.4. Attention Ablation (24-Hour Input)
 
 We retrained Bahdanau, the implemented general-score variant, a zero-context decoder, and a fixed mean-context decoder with seeds 42, 43, and 44. Each run used the same chronological split and test windows. Zero context supplies a zero vector in place of context; fixed mean uses the uniform average of encoder states. Both keep the downstream LSTM and readout dimensions and return uniform placeholder weights for the plotting interface. The table reports mean ± sample standard deviation across three independently trained runs; the complete per-run and per-horizon scores are in `outputs/ablation/runs.csv` and `outputs/ablation/summary.csv`.
 
-| Decoder context | Pooled MAE | Pooled RMSE | Pooled R² |
-|---|---:|---:|---:|
-| Zero context | 45.52 ± 2.68 | 70.60 ± 2.91 | 0.8929 ± 0.0087 |
-| Fixed mean context | 43.48 ± 1.67 | 67.85 ± 2.53 | 0.9011 ± 0.0074 |
-| Bahdanau | 43.99 ± 1.53 | 67.56 ± 1.82 | 0.9020 ± 0.0053 |
-| General score (`luong`) | **41.74 ± 0.52** | **65.22 ± 0.31** | **0.9087 ± 0.0009** |
+| Decoder context | Pooled MAE | Pooled RMSE | Pooled R² | Best validation MSE |
+|---|---:|---:|---:|---:|
+| Zero context | 45.52 ± 2.68 | 70.60 ± 2.91 | 0.8929 ± 0.0087 | 0.2165 ± 0.0217 |
+| Fixed mean context | 43.48 ± 1.67 | 67.85 ± 2.53 | 0.9011 ± 0.0074 | 0.2100 ± 0.0275 |
+| Bahdanau | 43.99 ± 1.53 | 67.56 ± 1.82 | 0.9020 ± 0.0053 | 0.1885 ± 0.0113 |
+| General score (`luong`) | **41.74 ± 0.52** | **65.22 ± 0.31** | **0.9087 ± 0.0009** | **0.1841 ± 0.0090** |
 
 The general-score variant has the lowest mean test MAE and the lowest mean best-validation MSE: 0.1841, versus 0.1885 for Bahdanau, 0.2100 for fixed mean, and 0.2165 for zero context. These validation values come from training logs rounded to four decimals. Its test advantage is a trend across only three seeds, not a significance claim. Fixed mean improves average test MAE relative to zero context, while Bahdanau is not clearly better than fixed mean. This suggests that context may matter more than learned nonuniform Bahdanau weights for a 24-hour input, but does not establish a general result. The `luong` option uses a pre-step query, so it is not a canonical Luong decoder.
 
@@ -176,21 +176,32 @@ The general-score variant has the lowest mean test MAE and the lowest mean best-
 | 43 | 48.06 | 45.38 | 43.54 | 42.09 |
 | 44 | 45.77 | 42.78 | 45.69 | 41.13 |
 
+| Decoder context | MAE at t+1 | MAE at t+5 |
+|---|---:|---:|
+| Zero context | 35.14 ± 3.63 | 52.70 ± 1.67 |
+| Fixed mean context | 33.73 ± 0.77 | 50.38 ± 3.18 |
+| Bahdanau | 34.38 ± 1.93 | 50.64 ± 1.08 |
+| General score (`luong`) | 33.31 ± 1.32 | 47.33 ± 0.36 |
+
+The gap in mean MAE between general score and zero context is 1.82 at t+1 and 5.38 at t+5. This is consistent with context reducing error accumulation during autoregressive decoding, but does not establish that mechanism. The fixed-mean control shows that the Bahdanau weighting has no clear advantage over uniform weighting in these three seeds.
+
 The Bahdanau seed-42 retraining gives MAE 42.7295, compared with 42.7329 from the earlier saved checkpoint, a difference of 0.0034. This is a close reproduction rather than a bitwise match; the original environment and deterministic-algorithm settings are not fully recorded, so the cause of the small difference cannot be isolated.
 
-All three variants have already been inspected on this test period, so these results are exploratory. A final configuration should be selected by validation loss before evaluating on a fresh held-out test period; the lowest test MAE must not be used to select it.
+All four variants have already been inspected on this test period, so these results are exploratory. A final configuration should be selected by validation loss before evaluating on a fresh held-out test period; the lowest test MAE must not be used to select it.
 
-### 2.6.4. Forecast Visualization
-
-The forecast plot shows actual and predicted counts for the first and fifth forecast horizons over the first 168 valid test origins. Its horizontal axis indexes forecast origins, which need not be consecutive clock hours because gap-crossing windows were removed.
+Validation and test rankings do not always agree: zero context at seed 42 has best-validation MSE 0.2210, worse than Bahdanau at seed 43 (0.1945), yet its test MAE is lower (42.73 versus 43.54). This is consistent with the documented shift between periods. Across all 12 ablation runs, selected checkpoints occur at epochs 4–10; with teacher forcing decaying linearly over 35 epochs, their ratios were still about 0.37–0.46. The planned decay therefore had not reached zero at checkpoint selection.
 
 Re-running the original Bahdanau checkpoint gives average attention weights from 0.04058 to 0.04410 per historical hour, close to uniform weighting ($1/24\approx0.04167$). This shows little concentration in the *average* weights. For the seed-42 ablation checkpoints, Bahdanau averages range from 0.04058 to 0.04411, while the general-score variant ranges from 0.02572 to 0.07361. Thus the latter has more nonuniform average weights in this run. Individual examples may differ. The fixed mean variant performs similarly to Bahdanau on average test MAE, so this experiment does not show a clear gain from learned nonuniform Bahdanau weights. The general-score variant's advantage remains a three-seed trend.
+
+### 2.6.5. Forecast Visualization
+
+The forecast plot shows actual and predicted counts for the first and fifth forecast horizons over the first 168 valid test origins. Its horizontal axis indexes forecast origins, which need not be consecutive clock hours because gap-crossing windows were removed.
 
 ![Actual and predicted counts at the first and fifth horizons](../outputs/figures/forecast_comparison.png)
 
 *Figure 2.5. Test forecasts at horizons $t+1$ and $t+5$.*
 
-### 2.6.5. Limitations and Discussion
+### 2.6.6. Limitations and Discussion
 
 The experiment uses one dataset and one chronological test period. The train, validation, and test periods have different average demand, so the reported accuracy may not transfer unchanged to another year or city. The context ablation uses three seeds at the 24-hour input length; longer histories have not been compared. The exploratory comparison has already used the test labels, so a selected final model would need a new test period. The reported point metrics remain valid for this test period, but overlapping windows require care with confidence intervals or significance claims.
 
