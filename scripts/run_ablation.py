@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
-ATTENTION_TYPES = ("bahdanau", "luong", "none")
+ATTENTION_TYPES = ("bahdanau", "luong", "none", "mean")
 
 
 def parse_args() -> argparse.Namespace:

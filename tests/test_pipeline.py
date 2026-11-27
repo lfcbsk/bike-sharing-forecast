@@ -31,6 +31,18 @@ class PipelineSafeguardsTest(unittest.TestCase):
         self.assertEqual(tuple(weights.shape), (4, 2, 6))
         torch.testing.assert_close(weights, torch.full_like(weights, 1 / 6))
 
+    def test_mean_context_keeps_decoder_shapes_and_uniform_weights(self):
+        model = Seq2SeqAttentionForecaster(
+            input_size=3, hidden_size=8, num_layers=1, pred_len=2,
+            dropout=0.0, attention_type="mean",
+        )
+        predictions, weights = model(
+            torch.randn(4, 6, 3), torch.randn(4, 1),
+        )
+        self.assertEqual(tuple(predictions.shape), (4, 2))
+        self.assertEqual(tuple(weights.shape), (4, 2, 6))
+        torch.testing.assert_close(weights, torch.full_like(weights, 1 / 6))
+
     def test_checkpoint_metadata_uses_project_relative_data_path(self):
         with tempfile.TemporaryDirectory() as directory:
             cfg = Config(output_dir=Path(directory))

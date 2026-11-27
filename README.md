@@ -22,16 +22,17 @@ An attention ablation retrained each variant with seeds 42, 43, and 44 on the sa
 | Decoder context | Pooled MAE | Pooled RMSE | Pooled R² |
 |---|---:|---:|---:|
 | Zero context (`none`) | 45.52 ± 2.68 | 70.60 ± 2.91 | 0.8929 ± 0.0087 |
+| Fixed mean context (`mean`) | 43.48 ± 1.67 | 67.85 ± 2.53 | 0.9011 ± 0.0074 |
 | Bahdanau | 43.99 ± 1.53 | 67.56 ± 1.82 | 0.9020 ± 0.0053 |
 | General score (`luong`) | **41.74 ± 0.52** | **65.22 ± 0.31** | **0.9087 ± 0.0009** |
 
-The general-score variant has the lowest mean MAE and the lowest mean best-validation MSE (0.1841, versus 0.1885 for Bahdanau and 0.2165 for zero context). Its test advantage is a trend across only three seeds, not a significance claim; Bahdanau is not clearly separated from zero context. The zero-context baseline also removes the learned context path, so this comparison does not isolate the effect of nonuniform weights. The ablation is exploratory because all variants have already been evaluated on the held-out test period. A future final configuration must be selected on validation data before inspecting a fresh test set.
+The general-score variant has the lowest mean MAE and the lowest mean best-validation MSE (0.1841, versus 0.1885 for Bahdanau, 0.2100 for fixed mean, and 0.2165 for zero context). Its test advantage is a trend across only three seeds, not a significance claim. Fixed mean improves mean test MAE relative to zero context, while Bahdanau does not clearly improve on fixed mean; this suggests that having context matters more than learning nonuniform Bahdanau weights for this 24-hour input. The ablation is exploratory because all variants have already been evaluated on the held-out test period. A future final configuration must be selected on validation data before inspecting a fresh test set.
 
-| Seed | Zero context MAE | Bahdanau MAE | General score MAE |
-|---:|---:|---:|---:|
-| 42 | 42.73 | 42.73 | 41.98 |
-| 43 | 48.06 | 43.54 | 42.09 |
-| 44 | 45.77 | 45.69 | 41.13 |
+| Seed | Zero context MAE | Fixed mean MAE | Bahdanau MAE | General score MAE |
+|---:|---:|---:|---:|---:|
+| 42 | 42.73 | 42.27 | 42.73 | 41.98 |
+| 43 | 48.06 | 45.38 | 43.54 | 42.09 |
+| 44 | 45.77 | 42.78 | 45.69 | 41.13 |
 
 Re-running Bahdanau with seed 42 gave MAE 42.7295, compared with 42.7329 in the previously saved checkpoint (difference 0.0034). The runs are close but not bitwise identical; the earlier environment and deterministic-algorithm settings were not recorded in enough detail to assign a single cause.
 
@@ -45,7 +46,7 @@ The [EDA notebook](notebooks/EDA.ipynb) quantifies gaps, window loss, temporal d
 
 The same-hour previous-week baseline scores MAE 64.21 on 2,414 test windows with an observed hour exactly 168 hours earlier. The saved Bahdanau checkpoint scores MAE 43.17 on that same subset. The remaining 55 test windows lack at least one prior-week hour. Average attention weights from the original Bahdanau checkpoint are near uniform; this does not imply the context has no predictive value.
 
-To compare attention mechanisms with the same pipeline, run `.\bike-forecast\Scripts\python.exe scripts/run_ablation.py`. It trains `bahdanau`, `luong`, and `none` with seeds 42, 43, and 44 in separate `outputs/ablation/` directories, then writes `runs.csv` and `summary.csv`. Use `--resume` to continue after an interrupted run. The `none` variant supplies zero context to the unchanged decoder and returns uniform placeholder weights for the plotting interface.
+To compare context and attention mechanisms with the same pipeline, run `.\bike-forecast\Scripts\python.exe scripts/run_ablation.py`. It trains `bahdanau`, `luong`, `none`, and `mean` with seeds 42, 43, and 44 in separate `outputs/ablation/` directories, then writes `runs.csv` and `summary.csv`. Use `--resume` to continue after an interrupted run. The `none` variant supplies zero context; `mean` supplies the fixed average of encoder states. Both return uniform placeholder weights for the plotting interface.
 
 ## Project layout
 

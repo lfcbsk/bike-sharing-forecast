@@ -65,8 +65,8 @@ def parse_args() -> argparse.Namespace:
         "--attention",
         type=str,
         default="bahdanau",
-        choices=["bahdanau", "luong", "none"],
-        help="Attention mechanism type: bahdanau, luong, or none (default: bahdanau)",
+        choices=["bahdanau", "luong", "none", "mean"],
+        help="Attention mechanism type: bahdanau, luong, none, or mean (default: bahdanau)",
     )
     parser.add_argument(
         "--epochs",

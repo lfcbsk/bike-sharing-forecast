@@ -135,11 +135,12 @@ class AttentionDecoder(nn.Module):
         self.hidden_size = hidden_size
         self.num_layers = num_layers
 
-        if attention_type.lower() == "none":
+        self.attention_type = attention_type.lower()
+        if self.attention_type in ("none", "mean"):
             self.attention = None
-        elif attention_type.lower() == "luong":
+        elif self.attention_type == "luong":
             self.attention = LuongAttention(hidden_size)
-        elif attention_type.lower() == "bahdanau":
+        elif self.attention_type == "bahdanau":
             self.attention = BahdanauAttention(hidden_size)
         else:
             raise ValueError(f"Unknown attention type: {attention_type}")
@@ -179,8 +180,9 @@ class AttentionDecoder(nn.Module):
         hidden, cell = hidden_cell
         # Both score types use the pre-step top-layer hidden state as query.
         top_hidden = hidden[-1]  # (batch_size, hidden_size)
-        if self.attention is None:
-            context = encoder_outputs.new_zeros(encoder_outputs.size(0), self.hidden_size)
+        if self.attention_type in ("none", "mean"):
+            context = (encoder_outputs.mean(dim=1) if self.attention_type == "mean"
+                       else encoder_outputs.new_zeros(encoder_outputs.size(0), self.hidden_size))
             attn_weights = encoder_outputs.new_full(
                 (encoder_outputs.size(0), encoder_outputs.size(1)),
                 1.0 / encoder_outputs.size(1),
