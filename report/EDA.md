@@ -1,6 +1,6 @@
 # Exploratory data analysis — hourly bike rentals
 
-Source: `data/hour.csv`. Run `python eda.py` from the repository root to regenerate this summary and `outputs/figures/eda_overview.png`.
+Source: `data/hour.csv`. The executable analysis is in [EDA.ipynb](../notebooks/EDA.ipynb). Run `python eda.py` to regenerate this compact summary and `outputs/figures/eda_overview.png`.
 
 ## Data quality and target
 
@@ -10,7 +10,7 @@ Source: `data/hour.csv`. Run `python eda.py` from the repository root to regener
 
 ## Patterns relevant to forecasting
 
-- In training rows, mean demand peaks at 17:00 (390.9) and is lowest at 04:00 (5.2). This supports using hourly calendar features and a 24-hour history.
+- In training rows, mean demand peaks at 17:00 (390.9) and is lowest at 04:00 (5.2). This motivates hourly calendar features; it does not establish that 24 hours is the best history length.
 - Training monthly means range from 94.4 to 218.5. Training temperature and humidity have Pearson correlations of 0.399 and -0.301 with `cnt`; these are associations, not causal effects.
 - Chronological splits have different target levels:
 
@@ -22,15 +22,17 @@ Source: `data/hour.csv`. Run `python eda.py` from the repository root to regener
 
 The shift means test accuracy should be interpreted for this later period, not assumed to transfer unchanged to another year.
 
-## Preprocessing decisions
+## Preprocessing hypotheses and decisions
 
-| EDA observation | Decision in the pipeline |
-|---|---|
-| Absent hourly timestamps | Keep original timestamps and discard 24-to-5 windows crossing a gap; do not interpolate missing hours. |
-| Strong hourly pattern in training data | Use the previous 24 hours and cyclic hour features. |
-| Seasonal and weather associations in training data | Retain historical calendar and weather fields; cyclically encode month and weekday. |
-| Different target means across chronological periods | Split by time, fit scalers on train only, and report test performance separately. |
-| `cnt = casual + registered` in every record | Drop `casual` and `registered` when forecasting `cnt`. |
+| Observation | Current choice | Evidence still needed |
+|---|---|---|
+| Absent hourly timestamps | Discard windows crossing a gap; never impute target labels. | Notebook measures gap lengths and window loss. Compare causal input imputation or masking on validation if needed. |
+| Strong hourly pattern | 24-hour input and cyclic hour features are a baseline. | Compare 12, 24, 48, 72 and 168 hours on common validation target origins. |
+| Calendar and weather associations | Retain historical calendar and observed weather. | Feature-group ablations; correlation alone does not establish predictive value. |
+| Different target means by period | Split chronologically and fit scalers on training rows only. | Rolling-origin validation can test stability across several cutoffs. |
+| `cnt = casual + registered` | Exclude historical components for simplicity. | Historical components do not inherently leak; compare with and without them on validation. Future components must never be inputs. |
+
+The saved metrics use one chronological holdout. It protects the final test period but assesses only one cutoff. Rolling-origin evaluation has not been run; the notebook proposes expanding folds without presenting them as results.
 
 ## Simple test baselines
 

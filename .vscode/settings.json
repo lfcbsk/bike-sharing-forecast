@@ -1,0 +1,4 @@
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}\\bike-forecast\\Scripts\\python.exe",
+  "python-envs.workspaceSearchPaths": ["./bike-forecast"]
+}

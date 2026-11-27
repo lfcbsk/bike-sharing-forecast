@@ -17,7 +17,7 @@ from src.config import Config
 
 def load_and_engineer_features(cfg: Config) -> Tuple[pd.DataFrame, List[str], pd.Series]:
     """
-    Load the raw CSV file, create cyclical (sin/cos) temporal features, drop leakage columns,
+    Load the raw CSV file, create cyclical (sin/cos) temporal features, drop configured columns,
     and place `pred_column` as the final column in the returned DataFrame.
     """
     df = pd.read_csv(cfg.data_path)
@@ -48,7 +48,7 @@ def load_and_engineer_features(cfg: Config) -> Tuple[pd.DataFrame, List[str], pd
             f"Available columns: {list(df.columns)}"
         )
 
-    # Drop non-feature / leakage columns while preserving pred_column
+    # Drop configured non-feature/redundant columns while preserving pred_column
     cols_to_drop = [
         c for c in cfg.drop_columns if c in df.columns and c != cfg.pred_column
     ]

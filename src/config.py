@@ -23,8 +23,8 @@ class Config:
     val_ratio: float = 0.15
     # test_ratio = 1.0 - train_ratio - val_ratio = 0.15
 
-    # Columns dropped to prevent data leakage when forecasting 'cnt'
-    # Note: cnt = casual + registered, so casual and registered must be excluded from input features
+    # Baseline excludes historical component counts for simplicity/redundancy.
+    # Past casual/registered values are causal; future values would leak the target.
     drop_columns: List[str] = field(
         default_factory=lambda: ["instant", "dteday", "casual", "registered"]
     )

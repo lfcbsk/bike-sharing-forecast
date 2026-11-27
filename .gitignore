@@ -150,6 +150,9 @@ activemq-data/
 *.sage.py
 
 # Environments
+bike-forecast/
+.uv-cache/
+.ipython-test/
 .env
 .envrc
 .venv
